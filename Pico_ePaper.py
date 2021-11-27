@@ -90,6 +90,9 @@ class Eink:
 
         self._rotation = rotation
 
+        self._spi = SPI(1)
+        self._spi.init(baudrate=4_000_000)
+
         self._rst = Pin(12, Pin.OUT, value=0)
         self._dc = Pin(8, Pin.OUT, value=0)
         self._cs = Pin(9, Pin.OUT, value=1)
@@ -99,9 +102,6 @@ class Eink:
                       1: EPD_3IN7_lut_1Gray_GC,
                       2: EPD_3IN7_lut_1Gray_DU,
                       3: EPD_3IN7_lut_1Gray_A2}
-
-        self._spi = SPI(1)
-        self._spi.init(baudrate=4_000_000)
 
         self._buffer_bw = bytearray(self._width * self._height // 8)
         self._buffer_red = bytearray(self._width * self._height // 8)
