@@ -76,14 +76,18 @@ class Eink:
     darkgray = 0b01
     lightgray = 0b10
 
+    RAM_BW = 0b01
+    RAM_RED = 0b10
+    RAM_RBW = 0b11
+
     def __init__(self, rotation=0):
         if rotation == 0 or rotation == 180:
-            self._width = 280
-            self._height = 480
+            self.width = 280
+            self.height = 480
             buf_format = framebuf.MONO_HLSB
         elif rotation == 90 or rotation == 270:
-            self._width = 480
-            self._height = 280
+            self.width = 480
+            self.height = 280
             buf_format = framebuf.MONO_VLSB
         else:
             raise ValueError(f"Incorrect rotation selected ({rotation}). Valid values: 0, 90, 180 and 270.")
@@ -103,10 +107,10 @@ class Eink:
                       2: EPD_3IN7_lut_1Gray_DU,
                       3: EPD_3IN7_lut_1Gray_A2}
 
-        self._buffer_bw = bytearray(self._width * self._height // 8)
-        self._buffer_red = bytearray(self._width * self._height // 8)
-        self._bw = framebuf.FrameBuffer(self._buffer_bw, self._width, self._height, buf_format)
-        self._red = framebuf.FrameBuffer(self._buffer_red, self._width, self._height, buf_format)
+        self._buffer_bw = bytearray(self.width * self.height // 8)
+        self._buffer_red = bytearray(self.width * self.height // 8)
+        self._bw = framebuf.FrameBuffer(self._buffer_bw, self.width, self.height, buf_format)
+        self._red = framebuf.FrameBuffer(self._buffer_red, self.width, self.height, buf_format)
 
         self._init_disp()
         sleep_ms(500)
@@ -223,13 +227,13 @@ class Eink:
 
         # Set window.
         if self._rotation == 0:
-            self._set_window(0, self._width - 1, 0, self._height - 1)
+            self._set_window(0, self.width - 1, 0, self.height - 1)
         elif self._rotation == 180:
-            self._set_window(self._width - 1, 0, self._height - 1, 0)
+            self._set_window(self.width - 1, 0, self.height - 1, 0)
         elif self._rotation == 90:
-            self._set_window(self._height - 1, 0, 0, self._width - 1)
+            self._set_window(self.height - 1, 0, 0, self.width - 1)
         elif self._rotation == 270:
-            self._set_window(0, self._height - 1, self._width - 1, 0)
+            self._set_window(0, self.height - 1, self.width - 1, 0)
         else:
             raise ValueError(f"Incorrect rotation selected")
 
@@ -245,11 +249,11 @@ class Eink:
         if self._rotation == 0:
             self._set_cursor(0, 0)
         elif self._rotation == 180:
-            self._set_cursor(self._width - 1, self._height - 1)
+            self._set_cursor(self.width - 1, self.height - 1)
         elif self._rotation == 90:
-            self._set_cursor(self._height - 1, 0)
+            self._set_cursor(self.height - 1, 0)
         elif self._rotation == 270:
-            self._set_cursor(0, self._width - 1)
+            self._set_cursor(0, self.width - 1)
         else:
             raise ValueError(f"Incorrect rotation selected")
 
@@ -319,6 +323,12 @@ class Eink:
     def text(self, text, x, y, colour=black):
         self._bw.text(text, x, y, colour & 1)
         self._red.text(text, x, y, colour >> 1)
+
+    def blit(self, fbuf, x, y, key=-1, palette=None, ram=RAM_RBW):
+        if ram & 1 == 1:
+            self._bw.blit(fbuf, x, y, key, palette)
+        if (ram >> 1) & 1 == 1:
+            self._red.blit(fbuf, x, y, key, palette)
 
 
 if __name__ == "__main__":
