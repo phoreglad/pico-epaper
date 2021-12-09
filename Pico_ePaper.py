@@ -93,9 +93,10 @@ class Eink:
             raise ValueError(f"Incorrect rotation selected ({rotation}). Valid values: 0, 90, 180 and 270.")
 
         self._rotation = rotation
+        self._partial = False
 
         self._spi = SPI(1)
-        self._spi.init(baudrate=4_000_000)
+        self._spi.init(baudrate=20_000_000)
 
         self._rst = Pin(12, Pin.OUT, value=0)
         self._dc = Pin(8, Pin.OUT, value=0)
@@ -111,6 +112,12 @@ class Eink:
         self._buffer_red = bytearray(self.width * self.height // 8)
         self._bw = framebuf.FrameBuffer(self._buffer_bw, self.width, self.height, buf_format)
         self._red = framebuf.FrameBuffer(self._buffer_red, self.width, self.height, buf_format)
+        self._bw.fill(1)
+        self._red.fill(1)
+
+        self._buffer_partial = bytearray(self.width * self.height // 8)
+        self._part = framebuf.FrameBuffer(self._buffer_partial, self.width, self.height, buf_format)
+        self._part.fill(1)
 
         self._init_disp()
         sleep_ms(500)
@@ -225,6 +232,8 @@ class Eink:
         # Set VCOM.
         self._send(0x2c, 0x44)
 
+        self._send(0x37, pack("10B", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
+
         # Set window.
         if self._rotation == 0:
             self._set_window(0, self.width - 1, 0, self.height - 1)
@@ -239,6 +248,9 @@ class Eink:
 
         # Set Display Update Control 2
         self._send(0x22, 0xcf)
+
+        # Clear screen.
+        self.show()
 
     # --------------------------------------------------------
     # Public methods.
@@ -257,33 +269,58 @@ class Eink:
         else:
             raise ValueError(f"Incorrect rotation selected")
 
-        # Load BW buffer to BW RAM.
-        self._send_command(0x24)
-        self._dc(1)
-        self._cs(0)
-        if self._rotation == 0 or self._rotation == 180:
-            self._spi.write(self._buffer_bw)
+        if self._partial:
+            # Load partial buffer to BW RAM.
+            self._send_command(0x24)
+            self._dc(1)
+            self._cs(0)
+            if self._rotation == 0 or self._rotation == 180:
+                self._spi.write(self._buffer_partial)
+            else:
+                for i in self._buffer_partial:
+                    self._spi.write(bytes([self._reverse_bits(i)]))
+            self._cs(1)
         else:
-            for i in self._buffer_bw:
-                self._spi.write(bytes([self._reverse_bits(i)]))
-        self._cs(1)
+            # Load BW buffer to BW RAM.
+            self._send_command(0x24)
+            self._dc(1)
+            self._cs(0)
+            if self._rotation == 0 or self._rotation == 180:
+                self._spi.write(self._buffer_bw)
+            else:
+                for i in self._buffer_bw:
+                    self._spi.write(bytes([self._reverse_bits(i)]))
+            self._cs(1)
 
-        # Load RED buffer to RED RAM.
-        self._send_command(0x26)
-        self._dc(1)
-        self._cs(0)
-        if self._rotation == 0 or self._rotation == 180:
-            self._spi.write(self._buffer_red)
-        else:
-            for i in self._buffer_red:
-                self._spi.write(bytes([self._reverse_bits(i)]))
-        self._cs(1)
+            # Load RED buffer to RED RAM.
+            self._send_command(0x26)
+            self._dc(1)
+            self._cs(0)
+            if self._rotation == 0 or self._rotation == 180:
+                self._spi.write(self._buffer_red)
+            else:
+                for i in self._buffer_red:
+                    self._spi.write(bytes([self._reverse_bits(i)]))
+            self._cs(1)
 
         print(f"Data loading time: {ticks_diff(ticks_ms(), start)} ms")
 
-        self._load_LUT(lut)
+        if self._partial:
+            self._load_LUT(2)
+        else:
+            self._load_LUT(lut)
         self._send_command(0x20)
         self._read_busy()
+
+    def partial_mode_on(self):
+        self._send(0x37, pack("10B", 0x00, 0xff, 0xff, 0xff, 0xff, 0x4f, 0xff, 0xff, 0xff, 0xff))
+        self._clear_ram()
+        self._partial = True
+
+    def partial_mode_off(self):
+        self._send(0x37, pack("10B", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
+        self._clear_ram()
+        self._partial = False
 
     def sleep(self):
         self._send(0x10, 0x03)
@@ -293,42 +330,69 @@ class Eink:
     # -------------------------------------------------------- 
 
     def fill(self, c=white):
-        self._bw.fill(c & 1)
-        self._red.fill(c >> 1)
+        if self._partial:
+            self._part.fill(c)
+        else:
+            self._bw.fill(c & 1)
+            self._red.fill(c >> 1)
 
-    def pixel(self, text, x, y, c=black):
-        self._bw.pixel(x, y, c & 1)
-        self._red.pixel(x, y, c >> 1)
+    def pixel(self, x, y, c=black):
+        if self._partial:
+            self._part.pixel(x, y, c)
+        else:
+            self._bw.pixel(x, y, c & 1)
+            self._red.pixel(x, y, c >> 1)
 
     def hline(self, x, y, w, c=black):
-        self._bw.hline(x, y, w, c & 1)
-        self._red.hline(x, y, w, c >> 1)
+        if self._partial:
+            self._part.hline(x, y, w, c)
+        else:
+            self._bw.hline(x, y, w, c & 1)
+            self._red.hline(x, y, w, c >> 1)
 
     def vline(self, x, y, h, c=black):
-        self._bw.vline(x, y, h, c & 1)
-        self._red.vline(x, y, h, c >> 1)
+        if self._partial:
+            self._part.vline(x, y, h, c)
+        else:
+            self._bw.vline(x, y, h, c & 1)
+            self._red.vline(x, y, h, c >> 1)
 
     def line(self, x1, y1, x2, y2, c=black):
-        self._bw.line(x1, y1, x2, y2, c & 1)
-        self._red.line(x1, y1, x2, y2, c >> 1)
+        if self._partial:
+            self._part.line(x1, y1, x2, y2, c)
+        else:
+            self._bw.line(x1, y1, x2, y2, c & 1)
+            self._red.line(x1, y1, x2, y2, c >> 1)
 
     def rect(self, x, y, w, h, c=black):
-        self._bw.rect(x, y, w, h, c & 1)
-        self._red.rect(x, y, w, h, c >> 1)
+        if self._partial:
+            self._part.rect(x, y, w, h, c)
+        else:
+            self._bw.rect(x, y, w, h, c & 1)
+            self._red.rect(x, y, w, h, c >> 1)
 
     def fill_rect(self, x, y, w, h, c=black):
-        self._bw.fill_rect(x, y, w, h, c & 1)
-        self._red.fill_rect(x, y, w, h, c >> 1)
+        if self._partial:
+            self._part.fill_rect(x, y, w, h, c)
+        else:
+            self._bw.fill_rect(x, y, w, h, c & 1)
+            self._red.fill_rect(x, y, w, h, c >> 1)
 
-    def text(self, text, x, y, colour=black):
-        self._bw.text(text, x, y, colour & 1)
-        self._red.text(text, x, y, colour >> 1)
+    def text(self, text, x, y, c=black):
+        if self._partial:
+            self._part.text(text, x, y, c)
+        else:
+            self._bw.text(text, x, y, c & 1)
+            self._red.text(text, x, y, c >> 1)
 
     def blit(self, fbuf, x, y, key=-1, palette=None, ram=RAM_RBW):
-        if ram & 1 == 1:
-            self._bw.blit(fbuf, x, y, key, palette)
-        if (ram >> 1) & 1 == 1:
-            self._red.blit(fbuf, x, y, key, palette)
+        if self._partial:
+            self._part.blit(fbuf, x, y, key, palette)
+        else:
+            if ram & 1 == 1:
+                self._bw.blit(fbuf, x, y, key, palette)
+            if (ram >> 1) & 1 == 1:
+                self._red.blit(fbuf, x, y, key, palette)
 
 
 if __name__ == "__main__":
