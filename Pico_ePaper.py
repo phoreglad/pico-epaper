@@ -137,6 +137,8 @@ class Eink:
         self._bw = framebuf.FrameBuffer(self._buffer_bw, self.width, self.height, buf_format)
         self._red = framebuf.FrameBuffer(self._buffer_red, self.width, self.height, buf_format)
 
+        self.fill()
+
         self._init_disp()
         sleep_ms(500)
 
