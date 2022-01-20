@@ -130,7 +130,7 @@ class Eink:
         self._cs(0)
         if isinstance(command, int):
             self._spi.write(bytes([command]))
-        elif isinstance(command, bytearray) or isinstance(command, bytes):
+        elif isinstance(command, (bytes, bytearray)):
             self._spi.write(command)
         else:
             raise ValueError  # For now
@@ -141,7 +141,7 @@ class Eink:
         self._cs(0)
         if isinstance(data, int):
             self._spi.write(bytes([data]))
-        elif isinstance(data, bytearray) or isinstance(data, bytes):
+        elif isinstance(data, (bytes, bytearray)):
             self._spi.write(data)
         else:
             raise ValueError  # For now
@@ -260,25 +260,13 @@ class Eink:
         else:
             raise ValueError(f"Incorrect rotation selected")
 
-        # Load BW buffer to BW RAM.
-        self._send_command(0x24)
-        self._dc(1)
-        self._cs(0)
+        # Load BW buffer to BW RAM and RED buffer to RED RAM.
         if self._rotation == 0 or self._rotation == 180:
-            self._spi.write(self._buffer_bw)
+            self._send(0x24, self._buffer_bw)
+            self._send(0x26, self._buffer_red)
         else:
-            self._spi.write(bytes(map(self._reverse_bits, self._buffer_bw)))
-        self._cs(1)
-
-        # Load RED buffer to RED RAM.
-        self._send_command(0x26)
-        self._dc(1)
-        self._cs(0)
-        if self._rotation == 0 or self._rotation == 180:
-            self._spi.write(self._buffer_red)
-        else:
-            self._spi.write(bytes(map(self._reverse_bits, self._buffer_red)))
-        self._cs(1)
+            self._send(0x24, bytes(map(self._reverse_bits, self._buffer_bw)))
+            self._send(0x26, bytes(map(self._reverse_bits, self._buffer_red)))
 
         print(f"Data loading time: {ticks_diff(ticks_ms(), start)} ms")
 
