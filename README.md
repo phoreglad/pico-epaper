@@ -19,9 +19,9 @@ method names and arguments they require (**blit()** being a slight exception - s
 ---
 
 ## Note
-**show()** method takes considerably longer for rotations 90 and 270, than 0 and 180 (~2 s vs 80 ms). This is normal and
+**show()** method takes considerably longer for rotations 90 and 270, than 0 and 180 (~700 ms vs 80 ms). This is normal and
 is a result of additional data processing required before sending buffers to the screen in landscape mode.
-Currently I have no solution to this problem.
+Currently, I have no solution to this problem.
 
 ---
 
