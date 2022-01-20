@@ -297,7 +297,7 @@ class Eink:
         self._bw.fill(c & 1)
         self._red.fill(c >> 1)
 
-    def pixel(self, text, x, y, c=black):
+    def pixel(self, x, y, c=black):
         self._bw.pixel(x, y, c & 1)
         self._red.pixel(x, y, c >> 1)
 
