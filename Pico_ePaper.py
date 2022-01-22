@@ -80,7 +80,7 @@ class Eink:
     RAM_RED = 0b10
     RAM_RBW = 0b11
 
-    def __init__(self, rotation=0):
+    def __init__(self, rotation=0, spi=None, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None):
         if rotation == 0 or rotation == 180:
             self.width = 280
             self.height = 480
@@ -94,13 +94,34 @@ class Eink:
 
         self._rotation = rotation
 
-        self._spi = SPI(1)
-        self._spi.init(baudrate=4_000_000)
+        if spi is None:
+            self._spi = SPI(1, baudrate=20_000_000)
+        else:
+            self._spi = spi
 
-        self._rst = Pin(12, Pin.OUT, value=0)
-        self._dc = Pin(8, Pin.OUT, value=0)
-        self._cs = Pin(9, Pin.OUT, value=1)
-        self._busy = Pin(13, Pin.IN, Pin.PULL_UP)
+        if reset_pin is None:
+            self._rst = Pin(12, Pin.OUT, value=0)
+        else:
+            self._rst = reset_pin
+            self._rst.init(Pin.OUT, value=0)
+
+        if dc_pin is None:
+            self._dc = Pin(8, Pin.OUT, value=0)
+        else:
+            self._dc = dc_pin
+            self._dc.init(Pin.OUT, value=0)
+
+        if cs_pin is None:
+            self._cs = Pin(9, Pin.OUT, value=1)
+        else:
+            self._cs = cs_pin
+            self._cs.init(Pin.OUT, value=1)
+
+        if busy_pin is None:
+            self._busy = Pin(13, Pin.IN, Pin.PULL_UP)
+        else:
+            self._busy = busy_pin
+            self._busy.init(Pin.IN)
 
         self._luts = {0: EPD_3IN7_lut_4Gray_GC,
                       1: EPD_3IN7_lut_1Gray_GC,

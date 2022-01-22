@@ -3,7 +3,7 @@ It should work as is, but YMMV.
 
 ---
 
-# pico-eink
+# Pico_ePaper
 
 <div align="center">
 
@@ -24,8 +24,38 @@ is a result of additional data processing required before sending buffers to the
 Currently, I have no solution to this problem.
 
 ---
+## Constructor
+**Eink(rotation=0, spi=None, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None)**
 
-## blit(fbuf, x, y, key=-1, palette=None, ram=RAM_RBW)
+Constructor for this class takes multiple optional arguments that allow setting desired rotation as well as custom
+SPI and Pin objects.
+
+Accepted values for rotation are: 0, 90, 180 and 270. Supplying unaccepted value will result in an error. The deafault
+value is 0, i.e. screen is horizontal with USB connector facing upwards.
+
+By default, the SPI and Pins setup reflects usage of the e-Paper display as a shield for Raspberry Pi Pico, but the user
+can supply custom configuration for use with different boards and microcontrollers (tested with ESP-WROOM-32).
+
+Default pin assignments:
+
+<div align="center">
+
+| Signal      | Pin  |
+| :---------- | :--- |
+| SCK         | GP10 |
+| MOSI        | GP11 |
+| CS          | GP9  |
+| DC          | GP8  |
+| RST (reset) | GP12 |
+| BUSY        | GP13 |
+
+</div>
+
+---
+
+## Public methods
+
+### blit(fbuf, x, y, key=-1, palette=None, ram=RAM_RBW)
 **blit()** method takes one additional keyword argument compared to the one found in FrameBuffer class - **ram** - that
 specifies the target buffer (and consequently RAM) the source will be drawn into. There are three possible values:
 1. RAM_BW - black pixels from source will be rendered in light gray on screen.
@@ -34,3 +64,4 @@ specifies the target buffer (and consequently RAM) the source will be drawn into
 
 (For RAM_BW and RAM_RED respective pixels in the other buffer are assumed to be white.)
 
+---
