@@ -64,13 +64,29 @@ EPD_3IN7_lut_1Gray_A2 = bytes([
 ])
 # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-from machine import Pin, SPI
+from machine import Pin
 import framebuf
 from utime import ticks_ms, ticks_diff, sleep_ms
 from ustruct import pack
+import gc
+import micropython
 
 
-class Eink:
+def profile(func):
+    def wrapper(*args, **kwargs):
+        gc.collect()
+        start_mem = gc.mem_free()
+        start_t = ticks_ms()
+        func(*args, **kwargs)
+        fin_t = ticks_ms()
+        fin_mem = gc.mem_free()
+        print(f'{func.__name__} took: {ticks_diff(fin_t, start_t)} ms to finish')
+        print(f'{func.__name__} used around {start_mem - fin_mem} B of memory')
+
+    return wrapper
+
+
+class EinkBase:
     black = 0b00
     white = 0b11
     darkgray = 0b01
@@ -80,24 +96,22 @@ class Eink:
     RAM_RED = 0b10
     RAM_RBW = 0b11
 
-    def __init__(self, rotation=0, spi=None, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None):
+    def __init__(self, rotation=0, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None):
         if rotation == 0 or rotation == 180:
             self.width = 280
             self.height = 480
             buf_format = framebuf.MONO_HLSB
+            self._horizontal = False
         elif rotation == 90 or rotation == 270:
             self.width = 480
             self.height = 280
             buf_format = framebuf.MONO_VLSB
+            self._horizontal = True
         else:
-            raise ValueError(f"Incorrect rotation selected ({rotation}). Valid values: 0, 90, 180 and 270.")
+            raise ValueError(
+                f"Incorrect rotation selected ({rotation}). Valid values: 0, 90, 180 and 270.")
 
         self._rotation = rotation
-
-        if spi is None:
-            self._spi = SPI(1, baudrate=20_000_000)
-        else:
-            self._spi = spi
 
         if reset_pin is None:
             self._rst = Pin(12, Pin.OUT, value=0)
@@ -147,26 +161,10 @@ class Eink:
         sleep_ms(30)
 
     def _send_command(self, command):
-        self._dc(0)
-        self._cs(0)
-        if isinstance(command, int):
-            self._spi.write(bytes([command]))
-        elif isinstance(command, (bytes, bytearray)):
-            self._spi.write(command)
-        else:
-            raise ValueError  # For now
-        self._cs(1)
+        raise NotImplementedError
 
     def _send_data(self, data):
-        self._dc(1)
-        self._cs(0)
-        if isinstance(data, int):
-            self._spi.write(bytes([data]))
-        elif isinstance(data, (bytes, bytearray)):
-            self._spi.write(data)
-        else:
-            raise ValueError  # For now
-        self._cs(1)
+        raise NotImplementedError
 
     def _send(self, command, data):
         self._send_command(command)
@@ -179,13 +177,6 @@ class Eink:
 
     def _load_LUT(self, lut=0):
         self._send(0x32, self._luts[lut])
-
-    @micropython.viper
-    def _reverse_bits(self, num: int) -> int:
-        result = 0
-        for i in range(8):
-            result = (result << 1) | ((num >> i) & 1)
-        return result
 
     def _set_cursor(self, x, y):
         self._send(0x4e, pack("h", x))
@@ -266,41 +257,24 @@ class Eink:
 
     # --------------------------------------------------------
     # Public methods.
-    # --------------------------------------------------------   
+    # --------------------------------------------------------
 
     def show(self, lut=0):
-        start = ticks_ms()  # Testing only.
         if self._rotation == 0:
             self._set_cursor(0, 0)
         elif self._rotation == 180:
             self._set_cursor(self.width - 1, self.height - 1)
         elif self._rotation == 90:
             self._set_cursor(self.height - 1, 0)
-        elif self._rotation == 270:
+        else:
             self._set_cursor(0, self.width - 1)
-        else:
-            raise ValueError(f"Incorrect rotation selected")
-
-        # Load BW buffer to BW RAM and RED buffer to RED RAM.
-        if self._rotation == 0 or self._rotation == 180:
-            self._send(0x24, self._buffer_bw)
-            self._send(0x26, self._buffer_red)
-        else:
-            self._send(0x24, bytes(map(self._reverse_bits, self._buffer_bw)))
-            self._send(0x26, bytes(map(self._reverse_bits, self._buffer_red)))
-
-        print(f"Data loading time: {ticks_diff(ticks_ms(), start)} ms")
-
-        self._load_LUT(lut)
-        self._send_command(0x20)
-        self._read_busy()
 
     def sleep(self):
         self._send(0x10, 0x03)
 
     # --------------------------------------------------------
     # Drawing routines (wrappers for FrameBuffer methods).
-    # -------------------------------------------------------- 
+    # --------------------------------------------------------
 
     def fill(self, c=white):
         self._bw.fill(c & 1)
@@ -341,8 +315,173 @@ class Eink:
             self._red.blit(fbuf, x, y, key, palette)
 
 
+class Eink(EinkBase):
+    from machine import SPI
+
+    def __init__(self, spi=None, *args, **kwargs):
+        if spi is None:
+            self._spi = self.SPI(1, baudrate=20_000_000)
+        else:
+            self._spi = spi
+        super(Eink, self).__init__(*args, **kwargs)
+
+    def _send_command(self, command):
+        self._dc(0)
+        self._cs(0)
+        if isinstance(command, int):
+            self._spi.write(bytes([command]))
+        elif isinstance(command, (bytes, bytearray)):
+            self._spi.write(command)
+        else:
+            raise ValueError  # For now
+        self._cs(1)
+
+    def _send_data(self, data):
+        self._dc(1)
+        self._cs(0)
+        if isinstance(data, int):
+            self._spi.write(bytes([data]))
+        elif isinstance(data, (bytes, bytearray)):
+            self._spi.write(data)
+        else:
+            raise ValueError  # For now
+        self._cs(1)
+
+    @micropython.viper
+    def _reverse_bits(self, num: int) -> int:
+        result = 0
+        for i in range(8):
+            result = (result << 1) | ((num >> i) & 1)
+        return result
+
+    # --------------------------------------------------------
+    # Public methods.
+    # --------------------------------------------------------
+
+    @profile
+    def show(self, lut=0):
+        super().show()
+        # Load BW buffer to BW RAM and RED buffer to RED RAM.
+        if not self._horizontal:
+            self._send(0x24, self._buffer_bw)
+            self._send(0x26, self._buffer_red)
+        else:
+            self._send(0x24, bytes(map(self._reverse_bits, self._buffer_bw)))
+            self._send(0x26, bytes(map(self._reverse_bits, self._buffer_red)))
+
+        self._load_LUT(lut)
+        self._send_command(0x20)
+        self._read_busy()
+
+
+class EinkPIO(EinkBase):
+    from machine import mem32
+    from uctypes import addressof
+
+    def __init__(self, pio=0, dma=5, *args, **kwargs):
+        # WARNING! Only PIO0 SM0 works!
+        # TODO: Support all StateMachines.
+        self._pio = 0
+        self._dma = dma * 0x40 + 0x50000000
+        self._sm = None
+        self._pio_setup()
+        self._dma_setup()
+        super(EinkPIO, self).__init__(*args, **kwargs)
+
+    def _pio_setup(self):
+        from rp2 import asm_pio, PIO, StateMachine
+
+        @asm_pio(out_init=PIO.OUT_LOW,
+                 sideset_init=PIO.OUT_LOW,
+                 autopull=True,
+                 pull_thresh=8,
+                 out_shiftdir=PIO.SHIFT_LEFT)
+        def pio_serial_tx():
+            out(pins, 1).side(0)
+            nop().side(1)
+
+        self._sm = StateMachine(self._pio, pio_serial_tx, freq=40_000_000,
+                                sideset_base=Pin(10), out_base=Pin(11))
+        self._sm.active(1)
+
+    def _reversed_output(self):
+        self.mem32[0x502000d0 + 0x2000] = 1 << 19
+
+    def _normal_output(self):
+        self.mem32[0x502000d0 + 0x3000] = 1 << 19
+
+    def _send_command(self, command):
+        self._dc(0)
+        self._cs(0)
+        if isinstance(command, int):
+            self._sm.put(command, 24)
+        elif isinstance(command, (bytes, bytearray)):
+            for cmd in command:
+                self._sm.put(cmd, 24)
+        else:
+            raise ValueError
+        self._cs(1)
+
+    def _send_data(self, data):
+        self._dc(1)
+        self._cs(0)
+        if isinstance(data, int):
+            self._sm.put(data, 24)
+        elif isinstance(data, (bytes, bytearray)):
+            for cmd in data:
+                self._sm.put(cmd, 24)
+        else:
+            raise ValueError
+        self._cs(1)
+
+    def _dma_setup(self):
+        self.mem32[self._dma + 0x30] = 0 << 15 | 1 << 4 | 0 << 2 | 1
+        self.mem32[self._dma + 0x38] = 16800
+        self.mem32[self._dma + 0x34] = 0x50200010
+
+    @micropython.viper
+    def _check_busy(self, a: ptr32) -> int:
+        return (a[0] >> 24) & 1
+
+    def _send_buffer(self, buffer):
+        if self._horizontal:
+            self._reversed_output()
+
+        self._dc(1)
+        self._cs(0)
+
+        self.mem32[self._dma + 0x3c] = self.addressof(buffer)
+        dma_ctrl = self._dma + 0x30
+
+        start = ticks_ms()
+        while self._check_busy(dma_ctrl) and ticks_diff(ticks_ms(), start) < 5000:
+            pass
+        self._cs(1)
+        if ticks_diff(ticks_ms(), start) >= 5000:
+            print('loading data took too long')
+
+        if self._horizontal:
+            self._normal_output()
+
+    # --------------------------------------------------------
+    # Public methods.
+    # --------------------------------------------------------
+
+    @profile
+    def show(self, lut=0):
+        super().show()
+        self._send_command(0x24)
+        self._send_buffer(self._buffer_bw)
+        self._send_command(0x26)
+        self._send_buffer(self._buffer_red)
+
+        self._load_LUT(lut)
+        self._send_command(0x20)
+        self._read_busy()
+
+
 if __name__ == "__main__":
-    epd = Eink(rotation=270)
+    epd = EinkPIO(rotation=270)
     epd.fill()
 
     epd.text("test", 10, 10)
