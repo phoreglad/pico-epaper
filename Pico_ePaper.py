@@ -376,16 +376,18 @@ class Eink(EinkBase):
 
 class EinkPIO(EinkBase):
     from machine import mem32
-    from uctypes import addressof
 
-    def __init__(self, pio=0, dma=5, *args, **kwargs):
-        # WARNING! Only PIO0 SM0 works!
-        # TODO: Support all StateMachines.
-        self._pio = 0
-        self._dma = dma * 0x40 + 0x50000000
+    def __init__(self, sm_num=0, dma=5, *args, **kwargs):
+        self._sm_num = sm_num
+        self._dma = int(dma * 0x40 + 0x50000030)
         self._sm = None
+        self._sm_shiftctrl = (0x502000d0 + 0x100000 * (self._sm_num // 4)
+                              + 0x18 * (self._sm_num % 4))
+        self._dma_write_addr = (0x50200010 + 0x100000 * (self._sm_num // 4)
+                                + 0x4 * (self._sm_num % 4))
+        dreq = self._sm_num % 4 + 8 * (self._sm_num // 4)
+        self._dma_ctrl = dreq << 15 | 1 << 4 | 1
         self._pio_setup()
-        self._dma_setup()
         super(EinkPIO, self).__init__(*args, **kwargs)
 
     def _pio_setup(self):
@@ -400,15 +402,15 @@ class EinkPIO(EinkBase):
             out(pins, 1).side(0)
             nop().side(1)
 
-        self._sm = StateMachine(self._pio, pio_serial_tx, freq=40_000_000,
+        self._sm = StateMachine(self._sm_num, pio_serial_tx, freq=40_000_000,
                                 sideset_base=Pin(10), out_base=Pin(11))
         self._sm.active(1)
 
     def _reversed_output(self):
-        self.mem32[0x502000d0 + 0x2000] = 1 << 19
+        self.mem32[self._sm_shiftctrl + 0x2000] = 1 << 19
 
     def _normal_output(self):
-        self.mem32[0x502000d0 + 0x3000] = 1 << 19
+        self.mem32[self._sm_shiftctrl + 0x3000] = 1 << 19
 
     def _send_command(self, command):
         self._dc(0)
@@ -434,13 +436,16 @@ class EinkPIO(EinkBase):
             raise ValueError
         self._cs(1)
 
-    def _dma_setup(self):
-        self.mem32[self._dma + 0x30] = 0 << 15 | 1 << 4 | 0 << 2 | 1
-        self.mem32[self._dma + 0x38] = 16800
-        self.mem32[self._dma + 0x34] = 0x50200010
+    @micropython.viper
+    def _dma_start(self, buffer):
+        dma_ptr = ptr32(self._dma)
+        dma_ptr[0] = int(self._dma_ctrl)
+        dma_ptr[1] = int(self._dma_write_addr)
+        dma_ptr[2] = int(len(buffer))
+        dma_ptr[3] = int(ptr32(buffer))
 
     @micropython.viper
-    def _check_busy(self, a: ptr32) -> int:
+    def _check_dma_busy(self, a: ptr32) -> int:
         return (a[0] >> 24) & 1
 
     def _send_buffer(self, buffer):
@@ -450,11 +455,11 @@ class EinkPIO(EinkBase):
         self._dc(1)
         self._cs(0)
 
-        self.mem32[self._dma + 0x3c] = self.addressof(buffer)
-        dma_ctrl = self._dma + 0x30
+        self._dma_start(buffer)
+        dma_ctrl = self._dma
 
         start = ticks_ms()
-        while self._check_busy(dma_ctrl) and ticks_diff(ticks_ms(), start) < 5000:
+        while self._check_dma_busy(dma_ctrl) and ticks_diff(ticks_ms(), start) < 5000:
             pass
         self._cs(1)
         if ticks_diff(ticks_ms(), start) >= 5000:
