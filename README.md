@@ -13,7 +13,7 @@ method names and arguments they require (**blit()** being a slight exception - s
 
 There are two classes in this module:
 1. Eink - uses SPI for communication with the display, can be used with devices other than RP2040.
-2. EinkPIO - uses one State Machine and DMA channel to communicate with the display (only PIO0 SM0 is supported for now).
+2. EinkPIO - uses one State Machine and DMA channel to communicate with the display.
 
 Both classes offer the same functionality and the only difference is the optional parameters in the constructor they take.
 
@@ -60,7 +60,7 @@ value is 0, i.e. screen is horizontal with USB connector facing upwards.
 to SPI(1, baudrate=20_000_000).
 
 **EinkPIO** constructor takes two optional arguments:
-1. _pio_ - sets which State Machine to use (currently has no effect).
+1. _pio_ - sets which State Machine to use (valid values: 0-7, defaults to 0).
 2. _dma_ - allows changing the DMA channel (defaults to 5).
 
 By default, Pins setup reflects usage of the e-Paper display as a shield for Raspberry Pi Pico, but the user
