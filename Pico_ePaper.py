@@ -304,9 +304,9 @@ class EinkBase:
         self._bw.fill_rect(x, y, w, h, c & 1)
         self._red.fill_rect(x, y, w, h, c >> 1)
 
-    def text(self, text, x, y, colour=black):
-        self._bw.text(text, x, y, colour & 1)
-        self._red.text(text, x, y, colour >> 1)
+    def text(self, text, x, y, c=black):
+        self._bw.text(text, x, y, c & 1)
+        self._red.text(text, x, y, c >> 1)
 
     def blit(self, fbuf, x, y, key=-1, palette=None, ram=RAM_RBW):
         if ram & 1 == 1:
