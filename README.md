@@ -48,7 +48,7 @@ Both classes use the same default pin configuration:
 ## Constructors
 **Eink(rotation=0, spi=None, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None)**
 
-**EinkPIO(rotation=0, pio=0, dma=5, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None)**
+**EinkPIO(rotation=0, sm_num=0, dma=5, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None)**
 
 Constructors for these classes take multiple optional arguments that allow setting desired rotation as well as custom
 pin assignments.
@@ -60,7 +60,7 @@ value is 0, i.e. screen is horizontal with USB connector facing upwards.
 to SPI(1, baudrate=20_000_000).
 
 **EinkPIO** constructor takes two optional arguments:
-1. _pio_ - sets which State Machine to use (valid values: 0-7, defaults to 0).
+1. _sm_num_ - sets which State Machine to use (valid values: 0-7, defaults to 0).
 2. _dma_ - allows changing the DMA channel (defaults to 5).
 
 By default, Pins setup reflects usage of the e-Paper display as a shield for Raspberry Pi Pico, but the user
