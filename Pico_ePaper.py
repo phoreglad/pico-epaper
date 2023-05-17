@@ -296,13 +296,17 @@ class EinkBase:
         self._bw.line(x1, y1, x2, y2, c & 1)
         self._red.line(x1, y1, x2, y2, c >> 1)
 
-    def rect(self, x, y, w, h, c=black):
-        self._bw.rect(x, y, w, h, c & 1)
-        self._red.rect(x, y, w, h, c >> 1)
+    def rect(self, x, y, w, h, c=black, f=False):
+        self._bw.rect(x, y, w, h, c & 1, f)
+        self._red.rect(x, y, w, h, c >> 1, f)
 
-    def fill_rect(self, x, y, w, h, c=black):
-        self._bw.fill_rect(x, y, w, h, c & 1)
-        self._red.fill_rect(x, y, w, h, c >> 1)
+    def ellipse(self, x, y, xr, yr, c=black, f=False, m=15):
+        self._bw.ellipse(x, y, xr, yr, c & 1, f, m)
+        self._red.ellipse(x, y, xr, yr, c >> 1, f, m)
+
+    def poly(self, x, y, coords, c=black, f=False):
+        self._bw.poly(x, y, coords, c & 1, f)
+        self._red.poly(x, y, coords, c >> 1, f)
 
     def text(self, text, x, y, c=black):
         self._bw.text(text, x, y, c & 1)
@@ -358,7 +362,7 @@ class Eink(EinkBase):
     # Public methods.
     # --------------------------------------------------------
 
-    @profile
+    # @profile
     def show(self, lut=0):
         super().show()
         # Load BW buffer to BW RAM and RED buffer to RED RAM.
@@ -472,7 +476,7 @@ class EinkPIO(EinkBase):
     # Public methods.
     # --------------------------------------------------------
 
-    @profile
+    # @profile
     def show(self, lut=0):
         super().show()
         self._send_command(0x24)
@@ -486,15 +490,17 @@ class EinkPIO(EinkBase):
 
 
 if __name__ == "__main__":
+    from uarray import array
+
     epd = EinkPIO(rotation=270)
     epd.fill()
 
     epd.text("test", 10, 10)
-    epd.fill_rect(0, 19, 52, 10, epd.lightgray)
+    epd.rect(0, 19, 52, 10, epd.lightgray, f=True)
     epd.text("test", 10, 20, epd.darkgray)
-    epd.fill_rect(0, 29, 52, 10, epd.darkgray)
+    epd.rect(0, 29, 52, 10, epd.darkgray, f=True)
     epd.text("test", 10, 30, epd.lightgray)
-    epd.fill_rect(0, 39, 52, 10)
+    epd.rect(0, 39, 52, 10, f=True)
     epd.text("test", 10, 40, epd.white)
     epd.rect(0, 8, 52, 41)
 
@@ -504,15 +510,21 @@ if __name__ == "__main__":
     epd.vline(55, 60, 100)
     epd.line(5, 60, 55, 160)
     epd.line(55, 60, 5, 160)
-    epd.show()
 
-    sleep_ms(5000)
+    epd.rect(65, 20, 50, 50, f=True)
+    epd.rect(65, 70, 50, 50, epd.darkgray, f=True)
+    epd.rect(65, 120, 50, 50, epd.lightgray, f=True)
+    epd.rect(65, 170, 50, 50, f=True)
+    epd.rect(65, 20, 50, 200)
 
-    epd.fill_rect(100, 20, 50, 50)
-    epd.fill_rect(100, 70, 50, 50, epd.darkgray)
-    epd.fill_rect(100, 120, 50, 50, epd.lightgray)
-    epd.fill_rect(100, 170, 50, 50)
-    epd.rect(100, 20, 50, 200)
+    epd.ellipse(150, 120, 25, 100, epd.lightgray, f=True, m=0b1010)
+    epd.ellipse(150, 120, 25, 100, epd.darkgray, f=True, m=0b0101)
+    epd.ellipse(150, 120, 25, 25, f=True)
+    epd.ellipse(150, 120, 10, 10, epd.white, f=True)
+
+    bestagon = array('h', [0, 0, 50, 0, 75, 43, 50, 86, 0, 86, -25, 43])
+    epd.poly(205, 77, bestagon, c=epd.darkgray, f=True)
+
     epd.show()
 
     epd.sleep()

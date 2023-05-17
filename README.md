@@ -91,10 +91,11 @@ Additionally, the module supports all standard drawing methods found in FrameBuf
 3. hline(x, y, w, c=black)
 4. vline(x, y, h, c=black)
 5. line(x1, y1, x2, y2, c=black)
-6. rect(x, y, w, h, c=black)
-7. fill_rect(x, y, w, h, c=black)
-8. text(text, x, y, c=black)
-9. blit(fbuf, x, y, key=-1, palette=None, ram=RAM_RBW)
+6. rect(x, y, w, h, c=black, f=False)
+7. ellipse(x, y, xr, yr, c=black, f=False, m=15)
+8. poly(x, y, coords, c=black, f=False)
+9. text(text, x, y, c=black)
+10. blit(fbuf, x, y, key=-1, palette=None, ram=RAM_RBW)
 
 ---
 
