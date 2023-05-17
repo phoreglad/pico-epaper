@@ -9,7 +9,7 @@ For this example to work img folder and its contents must be present on flash.
 
 ---
 
-## images_example.py
+## fonts_example.py
 
 An example showing how to use Writer class by Peter Hinch to render text in fonts not directly supported by FrameBuffer class.
 
