@@ -96,7 +96,7 @@ class EinkBase:
     RAM_RED = 0b10
     RAM_RBW = 0b11
 
-    def __init__(self, rotation=0, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None):
+    def __init__(self, rotation=0, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None, use_partial_buffer=False):
         if rotation == 0 or rotation == 180:
             self.width = 280
             self.height = 480
@@ -142,10 +142,23 @@ class EinkBase:
                       2: EPD_3IN7_lut_1Gray_DU,
                       3: EPD_3IN7_lut_1Gray_A2}
 
-        self._buffer_bw = bytearray(self.width * self.height // 8)
+        self._buffer_bw_actual = bytearray(self.width * self.height // 8)
         self._buffer_red = bytearray(self.width * self.height // 8)
-        self._bw = framebuf.FrameBuffer(self._buffer_bw, self.width, self.height, buf_format)
+        self._bw_actual = framebuf.FrameBuffer(self._buffer_bw_actual, self.width, self.height, buf_format)
         self._red = framebuf.FrameBuffer(self._buffer_red, self.width, self.height, buf_format)
+
+        # Don't start in partial mode.
+        self._partial = False
+        self._use_partial_buffer = use_partial_buffer
+
+        # Use separate buffer for partial updates only if user wants it, use bw buffer otherwise.
+        if use_partial_buffer:
+            self._buffer_partial = bytearray(self.width * self.height // 8)
+            self._part = framebuf.FrameBuffer(self._buffer_partial, self.width, self.height, buf_format)
+
+        # Alias buffer and FrameBuffer to indicate which buffer should be treated as BW RAM buffer.
+        self._buffer_bw = self._buffer_bw_actual
+        self._bw = self._bw_actual
 
         self.fill()
 
@@ -259,6 +272,23 @@ class EinkBase:
     # Public methods.
     # --------------------------------------------------------
 
+    def partial_mode_on(self):
+        self._send(0x37, pack("10B", 0x00, 0xff, 0xff, 0xff, 0xff, 0x4f, 0xff, 0xff, 0xff, 0xff))
+        self._clear_ram()
+        if self._use_partial_buffer:
+            self._buffer_bw = self._buffer_partial
+            self._bw = self._part
+        self._part.fill(1)
+        self._partial = True
+
+    def partial_mode_off(self):
+        self._send(0x37, pack("10B", 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00))
+        self._clear_ram()
+        if self._use_partial_buffer:
+            self._buffer_bw = self._buffer_bw_actual
+            self._bw = self._bw_actual
+        self._partial = False
+
     def show(self, lut=0):
         if self._rotation == 0:
             self._set_cursor(0, 0)
@@ -278,42 +308,51 @@ class EinkBase:
 
     def fill(self, c=white):
         self._bw.fill(c & 1)
-        self._red.fill(c >> 1)
+        if not self._partial:
+            self._red.fill(c >> 1)
 
     def pixel(self, x, y, c=black):
         self._bw.pixel(x, y, c & 1)
-        self._red.pixel(x, y, c >> 1)
+        if not self._partial:
+            self._red.pixel(x, y, c >> 1)
 
     def hline(self, x, y, w, c=black):
         self._bw.hline(x, y, w, c & 1)
-        self._red.hline(x, y, w, c >> 1)
+        if not self._partial:
+            self._red.hline(x, y, w, c >> 1)
 
     def vline(self, x, y, h, c=black):
         self._bw.vline(x, y, h, c & 1)
-        self._red.vline(x, y, h, c >> 1)
+        if not self._partial:
+            self._red.vline(x, y, h, c >> 1)
 
     def line(self, x1, y1, x2, y2, c=black):
         self._bw.line(x1, y1, x2, y2, c & 1)
-        self._red.line(x1, y1, x2, y2, c >> 1)
+        if not self._partial:
+            self._red.line(x1, y1, x2, y2, c >> 1)
 
     def rect(self, x, y, w, h, c=black, f=False):
         self._bw.rect(x, y, w, h, c & 1, f)
-        self._red.rect(x, y, w, h, c >> 1, f)
+        if not self._partial:
+            self._red.rect(x, y, w, h, c >> 1, f)
 
     def ellipse(self, x, y, xr, yr, c=black, f=False, m=15):
         self._bw.ellipse(x, y, xr, yr, c & 1, f, m)
-        self._red.ellipse(x, y, xr, yr, c >> 1, f, m)
+        if not self._partial:
+            self._red.ellipse(x, y, xr, yr, c >> 1, f, m)
 
     def poly(self, x, y, coords, c=black, f=False):
         self._bw.poly(x, y, coords, c & 1, f)
-        self._red.poly(x, y, coords, c >> 1, f)
+        if not self._partial:
+            self._red.poly(x, y, coords, c >> 1, f)
 
     def text(self, text, x, y, c=black):
         self._bw.text(text, x, y, c & 1)
-        self._red.text(text, x, y, c >> 1)
+        if not self._partial:
+            self._red.text(text, x, y, c >> 1)
 
     def blit(self, fbuf, x, y, key=-1, palette=None, ram=RAM_RBW):
-        if ram & 1 == 1:
+        if ram & 1 == 1 or self._partial:
             self._bw.blit(fbuf, x, y, key, palette)
         if (ram >> 1) & 1 == 1:
             self._red.blit(fbuf, x, y, key, palette)
@@ -358,6 +397,12 @@ class Eink(EinkBase):
             result = (result << 1) | ((num >> i) & 1)
         return result
 
+    def _send_buffer(self, buffer):
+        if self._horizontal:
+            self._send_data(bytes(map(self._reverse_bits, buffer)))
+        else:
+            self._send_data(buffer)
+
     # --------------------------------------------------------
     # Public methods.
     # --------------------------------------------------------
@@ -365,15 +410,16 @@ class Eink(EinkBase):
     # @profile
     def show(self, lut=0):
         super().show()
-        # Load BW buffer to BW RAM and RED buffer to RED RAM.
-        if not self._horizontal:
-            self._send(0x24, self._buffer_bw)
-            self._send(0x26, self._buffer_red)
-        else:
-            self._send(0x24, bytes(map(self._reverse_bits, self._buffer_bw)))
-            self._send(0x26, bytes(map(self._reverse_bits, self._buffer_red)))
 
-        self._load_LUT(lut)
+        self._send_command(0x24)
+        self._send_buffer(self._buffer_bw)
+        if self._partial:
+            self._load_LUT(2)
+        else:
+            self._send_command(0x26)
+            self._send_buffer(self._buffer_red)
+            self._load_LUT(lut)
+
         self._send_command(0x20)
         self._read_busy()
 
@@ -481,10 +527,13 @@ class EinkPIO(EinkBase):
         super().show()
         self._send_command(0x24)
         self._send_buffer(self._buffer_bw)
-        self._send_command(0x26)
-        self._send_buffer(self._buffer_red)
+        if self._partial:
+            self._load_LUT(2)
+        else:
+            self._send_command(0x26)
+            self._send_buffer(self._buffer_red)
+            self._load_LUT(lut)
 
-        self._load_LUT(lut)
         self._send_command(0x20)
         self._read_busy()
 
@@ -492,7 +541,7 @@ class EinkPIO(EinkBase):
 if __name__ == "__main__":
     from uarray import array
 
-    epd = EinkPIO(rotation=270)
+    epd = EinkPIO(rotation=270, use_partial_buffer=True)
     epd.fill()
 
     epd.text("test", 10, 10)
@@ -526,5 +575,14 @@ if __name__ == "__main__":
     epd.poly(205, 77, bestagon, c=epd.darkgray, f=True)
 
     epd.show()
+
+    epd.partial_mode_on()
+
+    for i in range(10):
+        epd.text(str(i), 10, 200)
+        epd.show()
+        epd.text(str(i), 10, 200, epd.white)
+
+    epd.partial_mode_off()
 
     epd.sleep()

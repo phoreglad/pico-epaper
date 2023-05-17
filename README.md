@@ -46,9 +46,9 @@ Both classes use the same default pin configuration:
 ---
 
 ## Constructors
-**Eink(rotation=0, spi=None, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None)**
+**Eink(rotation=0, spi=None, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None, use_partial_buffer=False)**
 
-**EinkPIO(rotation=0, sm_num=0, dma=5, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None)**
+**EinkPIO(rotation=0, sm_num=0, dma=5, cs_pin=None, dc_pin=None, reset_pin=None, busy_pin=None, use_partial_buffer=False)**
 
 Constructors for these classes take multiple optional arguments that allow setting desired rotation as well as custom
 pin assignments.
@@ -66,6 +66,9 @@ to SPI(1, baudrate=20_000_000).
 By default, Pins setup reflects usage of the e-Paper display as a shield for Raspberry Pi Pico, but the user
 can supply custom configuration for use with different boards and microcontrollers (tested with ESP-WROOM-32).
 
+The optional parameter **use_partial_buffer** can be set to _True_ to use separate buffer for partial refreshes.
+Otherwise, the BW buffer is used in partial mode.
+
 ---
 
 ## Public methods
@@ -82,6 +85,16 @@ Incorrect setting can result in unexpected behaviour.
 
 ### sleep()
 Puts display in sleep mode.
+
+---
+
+### partial_mode_on()
+Enables partial updates mode.
+
+---
+
+### partial_mode_off()
+Disables partial updates mode.
 
 ---
 
