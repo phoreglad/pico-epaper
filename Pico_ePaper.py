@@ -272,6 +272,10 @@ class EinkBase:
     # Public methods.
     # --------------------------------------------------------
 
+    def reinit(self):
+        """Public method for screen reinitialisation."""
+        self._init_disp()
+
     def partial_mode_on(self):
         self._send(0x37, pack("10B", 0x00, 0xff, 0xff, 0xff, 0xff, 0x4f, 0xff, 0xff, 0xff, 0xff))
         self._clear_ram()
@@ -540,6 +544,7 @@ class EinkPIO(EinkBase):
 
 if __name__ == "__main__":
     from uarray import array
+    from time import sleep
 
     epd = EinkPIO(rotation=270, use_partial_buffer=True)
     epd.fill()
@@ -571,6 +576,12 @@ if __name__ == "__main__":
     epd.ellipse(150, 120, 25, 25, f=True)
     epd.ellipse(150, 120, 10, 10, epd.white, f=True)
 
+    epd.show()
+
+    epd.sleep()
+    sleep(5)
+    # To use the screen after putting it to sleep, the reinitialisation is required.
+    epd.reinit()
     bestagon = array('h', [0, 0, 50, 0, 75, 43, 50, 86, 0, 86, -25, 43])
     epd.poly(205, 77, bestagon, c=epd.darkgray, f=True)
 
